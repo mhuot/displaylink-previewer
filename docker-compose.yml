@@ -1,0 +1,13 @@
+services:
+  displaylink-previewer:
+    build: .
+    image: displaylink-previewer:latest
+    container_name: displaylink-previewer
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    ports:
+      - "${PORT:-8080}:80"

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python lint and security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "black==26.10.1" "pylint>=3" "bandit>=1.7"
+      - run: black --check serve.py nrbf.py
+      - run: pylint --fail-under=8 serve.py nrbf.py
+      - run: bandit -q serve.py nrbf.py
+
+  web:
+    name: Web syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: for f in web/*.js tools/*.js; do node --check "$f"; done
+      - name: Decoder loads under Node
+        run: node -e "require('./web/nrbf.js'); require('./web/model.js')"
+
+  docker:
+    name: Container build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t displaylink-previewer:ci .
+      - name: Smoke test
+        run: |
+          docker run -d --name smoke -p 8080:80 displaylink-previewer:ci
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8080/ | grep -q "DisplayLink Previewer"
+          curl -fsSI http://127.0.0.1:8080/ | grep -qi "content-security-policy"

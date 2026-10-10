@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DisplayLink Previewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="bar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <h1>DisplayLink Previewer</h1>
+    </div>
+    <div class="bar-actions">
+      <label class="btn primary">
+        <input type="file" id="pick-folder" webkitdirectory multiple hidden>
+        Open folder
+      </label>
+      <label class="btn">
+        <input type="file" id="pick-files" multiple accept=".tpl,.seq,.png,.jpg,.jpeg,.bmp,.gif" hidden>
+        Open files
+      </label>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="side" id="side" hidden>
+      <input type="search" id="filter" placeholder="Filter templates" aria-label="Filter templates">
+      <nav id="tree" aria-label="Files"></nav>
+    </aside>
+
+    <main id="main">
+      <section class="empty" id="empty">
+        <div class="drop">
+          <div class="drop-panel" aria-hidden="true">
+            <span>WELCOME</span><span class="dim">LANE 4 · 00:58.21</span>
+          </div>
+          <h2>Drop a DisplayLink library here</h2>
+          <p>Open your <code>Templates</code> folder or drag in <code>.tpl</code> and <code>.seq</code> files.
+             Everything is decoded in this browser; nothing is uploaded.</p>
+          <label class="btn primary big">
+            <input type="file" id="pick-folder-2" webkitdirectory multiple hidden>
+            Open folder
+          </label>
+        </div>
+      </section>
+
+      <section id="gallery" hidden></section>
+
+      <section id="detail" hidden>
+        <div class="detail-head">
+          <button class="btn ghost" id="back" title="Back to gallery (Esc)">← All templates</button>
+          <div class="detail-title">
+            <h2 id="d-name"></h2>
+            <p id="d-path"></p>
+          </div>
+          <div class="nav-btns">
+            <button class="btn ghost" id="prev" title="Previous (←)">‹</button>
+            <button class="btn ghost" id="next" title="Next (→)">›</button>
+          </div>
+        </div>
+
+        <div class="toolbar" id="toolbar">
+          <label class="tog"><input type="checkbox" id="opt-led" checked> LED dots</label>
+          <label class="tog"><input type="checkbox" id="opt-codes"> Show data fields</label>
+          <label class="tog"><input type="checkbox" id="opt-boxes"> Item boxes</label>
+          <label class="field">Overlay backdrop
+            <select id="opt-backdrop">
+              <option value="checker">Checker</option>
+              <option value="black">Black</option>
+              <option value="none">None</option>
+            </select>
+          </label>
+          <label class="field">Zoom
+            <select id="opt-zoom">
+              <option value="2">2×</option>
+              <option value="3">3×</option>
+              <option value="4">4×</option>
+              <option value="fit" selected>Fit</option>
+            </select>
+          </label>
+          <button class="btn" id="download">Download PNG</button>
+        </div>
+
+        <div class="stage-wrap">
+          <div class="stage" id="stage">
+            <canvas id="big" role="img" aria-label="Template preview"></canvas>
+            <canvas id="hl" aria-hidden="true"></canvas>
+          </div>
+        </div>
+
+        <div class="seq" id="seq" hidden></div>
+
+        <div class="inspector" id="inspector">
+          <div class="insp-head">
+            <h3>Items</h3>
+            <span id="d-meta"></span>
+          </div>
+          <div class="insp-table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Type</th><th>Position</th><th>Content</th><th>Font</th><th>Colour</th></tr></thead>
+              <tbody id="items"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="dropcover" id="dropcover" hidden><span>Drop to load</span></div>
+
+  <script src="nrbf.js"></script>
+  <script src="model.js"></script>
+  <script src="render.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+.venv/
+.env
+docker-compose.override.yml
+__pycache__/
+*.pyc
+.DS_Store
+
+# Customer template libraries stay local
+*.tpl
+*.seq
+lib.cache
