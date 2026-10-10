@@ -8,7 +8,6 @@
 
   const state = {
     entries: [],        // { path, folder, name, ext, model?, error?, bytes? }
-    byName: new Map(),  // lower-case basename -> entry, for resolving .seq paths
     current: -1,        // index into visible()
     selected: -1,       // selected item index in the detail view
     native: document.createElement('canvas'),
@@ -54,7 +53,6 @@
     for (const e of fresh) seen.set(e.path, e);
     state.entries = [...seen.values()].sort((a, b) =>
       a.folder === b.folder ? a.name.localeCompare(b.name, undefined, { numeric: true }) : a.folder.localeCompare(b.folder));
-    state.byName = new Map(state.entries.map(e => [e.name.toLowerCase(), e]));
     $('empty').hidden = true;
     $('side').hidden = false;
     buildTree();
@@ -130,7 +128,7 @@
         if (e.error) thumb.textContent = 'Could not decode: ' + e.error;
         else if (e.model.kind === 'template') jobs.push([thumb, e.model]);
         else if (e.model.kind === 'sequence') {
-          const first = resolveSeqItem(e.model.items[0]);
+          const { entry: first } = resolveSeqItem(e.model.items[0], e.path);
           if (first && first.model && first.model.kind === 'template') jobs.push([thumb, first.model]);
           else thumb.append(el('div', 'seq-thumb', `▶ ${e.model.items.length} slides`));
         }
@@ -169,6 +167,7 @@
     const list = visible();
     if (i < 0 || i >= list.length) return;
     stopPlayback();
+    state.slides = null;
     state.current = i;
     state.selected = -1;
     const e = list[i];
@@ -189,7 +188,7 @@
       showModel(null);
       $('d-meta').textContent = 'Could not decode: ' + e.error;
     } else if (e.model.kind === 'sequence') {
-      buildSequence(e.model);
+      buildSequence(e.model, e.path);
     } else {
       showModel(e.model);
     }
@@ -313,11 +312,11 @@
 
   // ---------- sequences ----------
 
-  function resolveSeqItem(s) {
-    return s ? state.byName.get(s.name.toLowerCase()) : null;
+  function resolveSeqItem(s, path) {
+    return DLSequence.resolve(state.entries, s, path);
   }
 
-  async function buildSequence(model) {
+  async function buildSequence(model, path) {
     const box = $('seq');
     box.textContent = '';
     box.hidden = false;
@@ -327,7 +326,7 @@
     $('items').textContent = '';
     const slides = [];
     for (const [i, s] of model.items.entries()) {
-      const target = resolveSeqItem(s);
+      const { entry: target, error } = resolveSeqItem(s, path);
       const card = el('button', 'seq-item');
       const thumb = el('div', 'thumb');
       const meta = el('div', 'meta');
@@ -338,7 +337,7 @@
       const slide = { card, target, s };
       slides.push(slide);
       card.onclick = () => showSlide(slides, i);
-      if (!target) thumb.textContent = 'Not in loaded folder';
+      if (!target) thumb.textContent = error;
       else if (target.bytes) {
         const img = new Image();
         img.src = URL.createObjectURL(new Blob([target.bytes]));
@@ -349,8 +348,7 @@
       } else thumb.textContent = target.error ? 'Unreadable' : 'Unsupported';
     }
     state.slides = slides;
-    showSlide(slides, 0);
-    startPlayback(slides);
+    startPlayback(slides, model);
   }
 
   async function showSlide(slides, i, fromTimer) {
@@ -384,17 +382,20 @@
     }
   }
 
-  function startPlayback(slides) {
+  function startPlayback(slides, model) {
     stopPlayback();
-    if (slides.length < 2) return;
-    const tick = () => {
-      const next = (state.slideIndex + 1) % slides.length;
-      showSlide(slides, next, true);
-      state.playing = setTimeout(tick, Math.max(1, slides[next].s.seconds) * 1000);
-    };
-    state.playing = setTimeout(tick, Math.max(1, slides[0].s.seconds) * 1000);
+    let shownAny = false;
+    state.playing = DLSequence.play(
+      slides.map(slide => slide.s), model,
+      index => { shownAny = true; return showSlide(slides, index, true); },
+      error => {
+        $('d-meta').textContent = 'Could not play sequence: ' + error.message;
+        // Playback refused to start: still show the first slide so the preview isn't blank.
+        if (!shownAny && slides.length) showSlide(slides, 0, true);
+      },
+    );
   }
-  function stopPlayback() { clearTimeout(state.playing); state.playing = null; }
+  function stopPlayback() { if (state.playing) state.playing.stop(); state.playing = null; }
 
   // ---------- helpers ----------
 
@@ -428,7 +429,7 @@
   for (const id of ['opt-led', 'opt-codes', 'opt-backdrop', 'opt-zoom']) {
     $(id).addEventListener('change', () => {
       if (shown) redraw();
-      else if (state.slides) showSlide(state.slides, state.slideIndex, !!state.playing);
+      else if (state.slides) showSlide(state.slides, state.slideIndex, !!(state.playing && state.playing.active));
     });
   }
   $('opt-boxes').addEventListener('change', drawHighlights);

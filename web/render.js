@@ -42,8 +42,8 @@
     const fs = fontSpec(it);
     const lines = text.replace(/\r\n/g, '\n').split('\n');
 
-    const w = Math.max(it.width, it.actualWidth, 1);
-    const h = Math.max(it.height, lines.length * fs.lineHeight, 1);
+    const { w, h } = itemBox(it);
+    if (w <= 0 || h <= 0) return;
     const pad = 2;
     const c = new OffscreenCanvas(w + pad * 2, h + pad * 2);
     const g = c.getContext('2d');
@@ -51,7 +51,7 @@
     g.textBaseline = 'alphabetic';
     
     const block = lines.length * fs.lineHeight;
-    const boxH = it.height || block;
+    const boxH = h;
     let y0 = it.vAlign === 'top' ? 0 : it.vAlign === 'bottom' ? boxH - block : (boxH - block) / 2;
     const fill = (it.dim ? it.dimColor : it.color) || { css: '#fff' };
 
@@ -83,6 +83,10 @@
       g.putImageData(img, 0, 0);
     }
 
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(it.left, it.top, w, h);
+    ctx.clip();
     if (it.outline && !it.outline.transparent && opts.outlines) {
       const o = new OffscreenCanvas(c.width, c.height);
       const og = o.getContext('2d');
@@ -96,6 +100,7 @@
     } else {
       ctx.drawImage(c, it.left - pad, it.top - pad);
     }
+    ctx.restore();
   }
 
   async function renderTemplate(canvas, tpl, opts = {}) {
@@ -186,8 +191,8 @@
       const lines = (it.text || '').split('\n').length;
       return {
         x: it.left, y: it.top,
-        w: Math.max(it.width, it.actualWidth, 1),
-        h: Math.max(it.height, lines * fs.lineHeight, 1),
+        w: Math.max(it.width, 0),
+        h: Math.max(it.height || lines * fs.lineHeight, 0),
       };
     }
     return { x: it.left, y: it.top, w: it.width, h: it.height };

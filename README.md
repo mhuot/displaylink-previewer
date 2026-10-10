@@ -101,7 +101,15 @@ flowchart LR
 - Data text items keep their row height in `Height`; the inherited `height` is always 0.
 - `GraphicSequence` (`.seq`): slides reference files by absolute Windows path; durations are
   .NET ticks (10,000,000 per second).
+- Sequence lookup prefers exact paths (relative to the sequence folder for relative references),
+  then the longest matching directory suffix when Windows library prefixes differ. A basename
+  fallback is used only when unique; ambiguous matches are reported in the slide card.
+- Playback honors finite loop counts and subsecond durations. Each slide's duration starts
+  after rendering; the final slide remains visible when finite playback ends.
 - `lib.cache` is DisplayLink's per-folder index (paths, dates, thumbnails for images and video).
+- Both decoders require a supported serialization header, the declared root object and a
+  complete `MessageEnd`. Premature EOF and missing references are errors. Stale bytes after
+  the first complete stream are still ignored for compatibility with existing `lib.cache` files.
 
 ### Rendering limits
 
@@ -110,6 +118,16 @@ flowchart LR
 - Fonts that aren't installed (such as Knockout) fall back to similar fonts, squeezed to the
   `ActualWidth` DisplayLink recorded so text keeps its real footprint.
 - Scrolling text is shown static; data fields show their design-time placeholder text.
+- Text and outlines are clipped to their item bounds; the inspector uses those same bounds.
+
+### Regression tests
+
+No additional dependencies are required:
+
+```sh
+node --test tests/*.test.js
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
 
 ### Performance
 
