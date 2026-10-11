@@ -55,15 +55,15 @@ class Reader:
 
     def byte(self):
         """Read one unsigned byte."""
+        if self.at_end():
+            raise ValueError(f"unexpected end of NRBF stream at {self.pos}")
         value = self.data[self.pos]
         self.pos += 1
         return value
 
     def unpack(self, fmt):
         """Read one value with a struct format code."""
-        value = struct.unpack_from("<" + fmt, self.data, self.pos)[0]
-        self.pos += struct.calcsize(fmt)
-        return value
+        return struct.unpack("<" + fmt, self.raw(struct.calcsize(fmt)))[0]
 
     def int32(self):
         """Read a signed 32-bit integer."""
@@ -71,20 +71,30 @@ class Reader:
 
     def raw(self, count):
         """Read `count` raw bytes."""
+        if count < 0 or count > len(self.data) - self.pos:
+            raise ValueError(f"invalid or truncated NRBF byte range at {self.pos}")
         value = self.data[self.pos : self.pos + count]
         self.pos += count
         return value
 
+    def char(self):
+        """Read one UTF-8 encoded character (1 to 4 bytes)."""
+        lead = self.data[self.pos] if not self.at_end() else 0
+        length = 1 if lead < 0x80 else 2 if lead < 0xE0 else 3 if lead < 0xF0 else 4
+        return self.raw(length).decode("utf-8")
+
     def string(self):
         """Read a 7-bit length-prefixed UTF-8 string."""
         length = shift = 0
-        while True:
+        while shift < 35:
             chunk = self.byte()
             length |= (chunk & 0x7F) << shift
             shift += 7
             if not chunk & 0x80:
-                break
-        return self.raw(length).decode("utf-8", "replace")
+                if length > 0x7FFFFFFF:
+                    raise ValueError("invalid NRBF string length")
+                return self.raw(length).decode("utf-8")
+        raise ValueError("invalid NRBF string length prefix")
 
 
 class Ref:  # pylint: disable=too-few-public-methods
@@ -112,7 +122,6 @@ class Parser:
         self.objects = {}
         self.classes = {}
         self.handlers = {
-            0: self._header,
             1: self._class_with_id,
             4: self._class_with_members_and_types,
             5: self._class_with_members_and_types,
@@ -122,7 +131,6 @@ class Parser:
             9: lambda: Ref(self.reader.int32()),
             10: lambda: None,
             11: lambda: END,
-            12: self._library,
             13: lambda: NullRun(self.reader.byte()),
             14: lambda: NullRun(self.reader.int32()),
             15: self._array_of_primitives,
@@ -137,7 +145,7 @@ class Parser:
         if type_code in PRIMITIVE_STRING_TYPES:
             return reader.string()
         if type_code == PRIMITIVE_CHAR:
-            return reader.raw(1).decode("latin1")
+            return reader.char()
         if type_code == PRIMITIVE_DATETIME:
             return {"DateTime_ticks": reader.unpack("Q") & DATETIME_TICKS_MASK}
         return reader.unpack(PRIMITIVE_FORMATS[type_code])
@@ -173,14 +181,10 @@ class Parser:
 
     # ---- record handlers ----
 
-    def _header(self):
-        self.reader.raw(16)
-        return self.record()
-
-    def _library(self):
+    def _library(self, allow_end=False):
         self.reader.int32()
         self.reader.string()
-        return self.record()
+        return self.record(allow_end)
 
     def _class_with_members_and_types(self, with_library):
         reader = self.reader
@@ -248,9 +252,15 @@ class Parser:
 
     # ---- driver ----
 
-    def record(self):
+    def record(self, allow_end=False):
         """Read the next record and return its value."""
         record_type = self.reader.byte()
+        if record_type == 0:
+            raise ValueError("unexpected NRBF serialization header")
+        if record_type == 11 and not allow_end:
+            raise ValueError("unexpected NRBF MessageEnd inside a value")
+        if record_type == 12:
+            return self._library(allow_end)
         if record_type in (4, 5):
             return self._class_with_members_and_types(record_type == 5)
         handler = self.handlers.get(record_type)
@@ -262,17 +272,29 @@ class Parser:
 
     def parse(self):
         """Parse the whole stream and return the root object with refs resolved."""
-        root = self.record()
-        while not self.reader.at_end():
-            if self.record() is END:
+        if self.reader.byte() != 0:
+            raise ValueError("missing NRBF serialization header")
+        root_id = self.reader.int32()
+        self.reader.int32()  # header ID
+        if (self.reader.int32(), self.reader.int32()) != (1, 0):
+            raise ValueError("unsupported NRBF version")
+        while True:
+            if self.reader.at_end():
+                raise ValueError("missing NRBF MessageEnd")
+            if self.record(allow_end=True) is END:
                 break
-        return self._resolve(root, frozenset())
+        # lib.cache can retain stale bytes after its first complete stream.
+        if root_id not in self.objects:
+            raise ValueError(f"missing NRBF root object {root_id}")
+        return self._resolve(self.objects[root_id], frozenset())
 
     def _resolve(self, value, seen):
         if isinstance(value, Ref):
             if value.object_id in seen:
                 return f"<ref {value.object_id}>"
-            target = self.objects.get(value.object_id, f"<missing {value.object_id}>")
+            if value.object_id not in self.objects:
+                raise ValueError(f"missing NRBF object reference {value.object_id}")
+            target = self.objects[value.object_id]
             return self._resolve(target, seen | {value.object_id})
         if isinstance(value, dict):
             return {key: self._resolve(item, seen) for key, item in value.items()}

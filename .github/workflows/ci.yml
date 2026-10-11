@@ -21,6 +21,7 @@ jobs:
       - run: black --check serve.py nrbf.py
       - run: pylint --fail-under=8 serve.py nrbf.py
       - run: bandit -q serve.py nrbf.py
+      - run: python -m unittest discover -s tests -p 'test_*.py'
 
   web:
     name: Web syntax
@@ -33,6 +34,8 @@ jobs:
       - run: for f in web/*.js tools/*.js; do node --check "$f"; done
       - name: Decoder loads under Node
         run: node -e "require('./web/nrbf.js'); require('./web/model.js')"
+      - name: Web regression tests
+        run: node --test tests/*.test.js
 
   docker:
     name: Container build

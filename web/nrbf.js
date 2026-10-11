@@ -31,7 +31,10 @@
       this.p = 0;
     }
     get eof() { return this.p >= this.u.length; }
-    u8() { return this.u[this.p++]; }
+    u8() {
+      if (this.eof) throw new Error(`unexpected end of NRBF stream at ${this.p}`);
+      return this.u[this.p++];
+    }
     i8() { return this.v.getInt8(this.p++); }
     i16() { const x = this.v.getInt16(this.p, true); this.p += 2; return x; }
     u16() { const x = this.v.getUint16(this.p, true); this.p += 2; return x; }
@@ -41,11 +44,22 @@
     u64() { const x = this.v.getBigUint64(this.p, true); this.p += 8; return x; }
     f32() { const x = this.v.getFloat32(this.p, true); this.p += 4; return x; }
     f64() { const x = this.v.getFloat64(this.p, true); this.p += 8; return x; }
-    bytes(n) { const b = this.u.subarray(this.p, this.p + n); this.p += n; return b; }
+    bytes(n) {
+      if (!Number.isInteger(n) || n < 0 || n > this.u.length - this.p)
+        throw new Error(`invalid or truncated NRBF byte range at ${this.p}`);
+      const b = this.u.subarray(this.p, this.p + n); this.p += n; return b;
+    }
     str() {
-      let n = 0, shift = 0, c;
-      do { c = this.u8(); n |= (c & 0x7f) << shift; shift += 7; } while (c & 0x80);
-      return new TextDecoder().decode(this.bytes(n));
+      let n = 0;
+      for (let shift = 0; shift < 35; shift += 7) {
+        const c = this.u8();
+        n += (c & 0x7f) * 2 ** shift;
+        if (!(c & 0x80)) {
+          if (n > 0x7fffffff) throw new Error('invalid NRBF string length');
+          return new TextDecoder('utf-8', { fatal: true }).decode(this.bytes(n));
+        }
+      }
+      throw new Error('invalid NRBF string length prefix');
     }
     char() {
       const c = this.u[this.p];
@@ -107,11 +121,11 @@
       return out;
     }
 
-    function record() {
+    function record(allowEnd = false) {
       const rt = r.u8();
       switch (rt) {
-        case 0: r.bytes(16); return record();                       // SerializationHeader
-        case 12: { const id = r.i32(); libs.set(id, r.str()); return record(); } // BinaryLibrary
+        case 0: throw new Error('unexpected NRBF serialization header');
+        case 12: { const id = r.i32(); libs.set(id, r.str()); return record(allowEnd); } // BinaryLibrary
         case 4: case 5: {                                           // (System)ClassWithMembersAndTypes
           const ci = classInfo();
           ci.types = memberTypes(ci.members.length);
@@ -157,25 +171,38 @@
           else v = fill(total);
           objs.set(id, v); return v;
         }
-        case 11: return END;                                        // MessageEnd
+        case 11:
+          if (!allowEnd) throw new Error('unexpected NRBF MessageEnd inside a value');
+          return END;
         default: throw new Error(`unknown record type ${rt} at offset ${r.p - 1}`);
       }
     }
 
-    const root0 = record();
-    while (!r.eof && record() !== END) { /* drain remaining records */ }
+    if (r.u8() !== 0) throw new Error('missing NRBF serialization header');
+    const rootId = r.i32();
+    r.i32(); // header ID
+    if (r.i32() !== 1 || r.i32() !== 0) throw new Error('unsupported NRBF version');
+    while (true) {
+      if (r.eof) throw new Error('missing NRBF MessageEnd');
+      if (record(true) === END) break;
+    }
+    // lib.cache can retain stale bytes after its first complete stream.
+    if (!objs.has(rootId)) throw new Error(`missing NRBF root object ${rootId}`);
 
     // Replace Ref placeholders in place; shared objects stay shared.
     const done = new Set();
     const resolve = v => {
-      if (v instanceof Ref) return objs.has(v.id) ? resolve(objs.get(v.id)) : null;
+      if (v instanceof Ref) {
+        if (!objs.has(v.id)) throw new Error(`missing NRBF object reference ${v.id}`);
+        return resolve(objs.get(v.id));
+      }
       if (v && typeof v === 'object' && !(v instanceof Uint8Array) && !done.has(v)) {
         done.add(v);
         for (const k of Object.keys(v)) v[k] = resolve(v[k]);
       }
       return v;
     };
-    return resolve(root0);
+    return resolve(objs.get(rootId));
   }
 
   const api = { parse };
