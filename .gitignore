@@ -9,3 +9,6 @@ __pycache__/
 *.tpl
 *.seq
 lib.cache
+
+# Start lists contain swimmers' names
+*.scb

@@ -20,7 +20,7 @@
         Open folder
       </label>
       <label class="btn">
-        <input type="file" id="pick-files" multiple accept=".tpl,.seq,.png,.jpg,.jpeg,.bmp,.gif" hidden>
+        <input type="file" id="pick-files" multiple accept=".tpl,.seq,.scb,.png,.jpg,.jpeg,.bmp,.gif" hidden>
         Open files
       </label>
     </div>
@@ -40,6 +40,7 @@
           </div>
           <h2>Drop a DisplayLink library here</h2>
           <p>Open your <code>Templates</code> folder or drag in <code>.tpl</code> and <code>.seq</code> files.
+             Add <code>.scb</code> start lists to see real names and teams on the boards.
              Everything is decoded in this browser; nothing is uploaded.</p>
           <label class="btn primary big">
             <input type="file" id="pick-folder-2" webkitdirectory multiple hidden>
@@ -85,6 +86,21 @@
           <button class="btn" id="download">Download PNG</button>
         </div>
 
+        <div class="toolbar startlist" id="startlist" hidden>
+          <label class="field">Start list
+            <select id="sl-event"><option value="">Template sample text</option></select>
+          </label>
+          <span class="sl-step">
+            <button class="btn ghost" id="sl-prev" title="Previous heat or diver (↑)">‹</button>
+            <span id="sl-pos" class="mono"></span>
+            <button class="btn ghost" id="sl-next" title="Next heat or diver (↓)">›</button>
+          </span>
+          <label class="field">Meet title
+            <input type="text" id="sl-meet" placeholder="Template sample text" aria-label="Meet title for MM_SW_MT">
+          </label>
+          <span id="sl-note"></span>
+        </div>
+
         <div class="stage-wrap">
           <div class="stage" id="stage">
             <canvas id="big" role="img" aria-label="Template preview"></canvas>
@@ -116,6 +132,7 @@
   <script src="model.js"></script>
   <script src="render.js"></script>
   <script src="sequence.js"></script>
+  <script src="scb.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

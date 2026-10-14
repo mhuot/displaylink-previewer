@@ -18,6 +18,8 @@ Reviewing or sharing a meet's boards means sitting at that machine.
   (for example `SCBD_SW_TM[3]`, lane 3's time)
 - "Show data fields" swaps placeholder text for field codes
 - Sequences play in order with their real durations; slides are matched to files in the loaded folder
+- Load CTS `.scb` start lists (from Hy-Tek Meet Manager or SwimTopia Meet Maestro) to see real names,
+  teams and event titles in the `MM_` fields; step through heats, or divers for diving events
 - Runs entirely in the browser: files are decoded locally and never uploaded
 - WCAG AAA colour contrast, keyboard navigation (← → Esc)
 
@@ -81,7 +83,8 @@ flowchart LR
 | `web/nrbf.js` | MS-NRBF (.NET BinaryFormatter) decoder; also loads in Node |
 | `web/model.js` | Decoded objects → templates / sequences / library indexes; .NET `KnownColor` table |
 | `web/render.js` | Draws a template at panel resolution; LED-dot upscaler |
-| `web/app.js` | Gallery, detail view, inspector, sequence playback |
+| `web/scb.js` | CTS `.scb` start-list parser and `MM_` field substitution; also loads in Node |
+| `web/app.js` | Gallery, detail view, inspector, sequence playback, start-list picker |
 | `serve.py` | Local server (127.0.0.1 only) that can preload a library under `/library/` |
 | `nrbf.py` | Python decoder: `python3 nrbf.py file.tpl` prints the file as JSON |
 | `tools/parity.js` | Dumps files with the JS decoder for diffing against `nrbf.py` |
@@ -111,13 +114,30 @@ flowchart LR
   complete `MessageEnd`. Premature EOF and missing references are errors. Stale bytes after
   the first complete stream are still ignored for compatibility with existing `lib.cache` files.
 
+### Start lists (.scb)
+
+- Hy-Tek Meet Manager and SwimTopia Meet Maestro export one CTS `.scb` file per event. Line 1
+  is `#<event> <title>`; then 10 lines per heat, one per lane: a 20-character name, `--`, and
+  the team. Relays put the relay name (`TEAM A`) in the name slot.
+- Open them with **Open files** or drag them in alongside a library. A **Start list** bar
+  appears in the detail view: pick an event, step through heats (↑ ↓), and optionally type a
+  meet title for `MM_SW_MT`.
+- Fields filled: `MM_SW_ET` (event title), `MM_SW_NM[lane]` and `MM_SW_AF[lane]` (name and
+  team). Events whose title contains `DIVING` fill `MM_DV_ET`, `MM_DV_NM` and `MM_DV_AF`, one
+  diver at a time in start order.
+- Start lists hold swimmers' names. They are read in the browser only, are never served by
+  `serve.py`, and `*.scb` is git-ignored.
+
 ### Rendering limits
 
 - The `DisplayLink NxM` LED fonts aren't available, so a bold sans at M px stands in, thresholded
   to whole pixels. Line widths match the originals closely; glyph shapes don't exactly.
 - Fonts that aren't installed (such as Knockout) fall back to similar fonts, squeezed to the
   `ActualWidth` DisplayLink recorded so text keeps its real footprint.
-- Scrolling text is shown static; data fields show their design-time placeholder text.
+- Scrolling text is shown static; data fields show their design-time placeholder text unless a
+  start list fills the `MM_` fields.
+- Start-list text is shown as written in the `.scb` file. DisplayLink's per-field `DataFormat`
+  (for example "Format 3" on names) may reformat it on the board; that is not modelled.
 - Text and outlines are clipped to their item bounds; the inspector uses those same bounds.
 
 ### Regression tests

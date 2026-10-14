@@ -5,6 +5,7 @@
   const $ = id => document.getElementById(id);
   const IMAGE_RE = /\.(png|jpe?g|bmp|gif)$/i;
   const DL_RE = /\.(tpl|seq)$/i;
+  const SCB_RE = /\.scb$/i;
 
   const state = {
     entries: [],        // { path, folder, name, ext, model?, error?, bytes? }
@@ -12,6 +13,8 @@
     selected: -1,       // selected item index in the detail view
     native: document.createElement('canvas'),
     playing: null,
+    startLists: [],     // parsed .scb files, by event number
+    sl: { index: -1, heat: 0, diver: 0 },
   };
 
   const opts = () => ({
@@ -25,6 +28,8 @@
   // ---------- loading ----------
 
   async function loadFiles(files) {
+    const scb = [...files].filter(f => SCB_RE.test(f.name));
+    if (scb.length) await loadStartLists(scb);
     const list = [...files].filter(f => DL_RE.test(f.name) || IMAGE_RE.test(f.name));
     if (!list.length) return;
     let paths = list.map(f => f.webkitRelativePath || f.relPath || f.name);
@@ -126,10 +131,10 @@
         card.onclick = () => openDetail(visible().indexOf(e));
         grid.append(card);
         if (e.error) thumb.textContent = 'Could not decode: ' + e.error;
-        else if (e.model.kind === 'template') jobs.push([thumb, e.model]);
+        else if (e.model.kind === 'template') jobs.push([thumb, DLScb.apply(e.model, startListValues())]);
         else if (e.model.kind === 'sequence') {
           const { entry: first } = resolveSeqItem(e.model.items[0], e.path);
-          if (first && first.model && first.model.kind === 'template') jobs.push([thumb, first.model]);
+          if (first && first.model && first.model.kind === 'template') jobs.push([thumb, DLScb.apply(first.model, startListValues())]);
           else thumb.append(el('div', 'seq-thumb', `▶ ${e.model.items.length} slides`));
         }
       }
@@ -194,9 +199,12 @@
     }
   }
 
-  let shown = null;
+  let shown = null, shownBase = null;
   async function showModel(model) {
+    shownBase = model;
+    model = DLScb.apply(model, startListValues());
     shown = model;
+    updateStartListNote();
     const big = $('big');
     if (!model) {
       big.width = big.height = 0;
@@ -397,6 +405,92 @@
   }
   function stopPlayback() { if (state.playing) state.playing.stop(); state.playing = null; }
 
+  // ---------- start lists (.scb) ----------
+
+  async function loadStartLists(files) {
+    const errors = [];
+    for (const f of files) {
+      try {
+        const list = DLScb.parse(await f.text(), f.name);
+        state.startLists = state.startLists.filter(l => l.fileName !== f.name).concat(list);
+      } catch (err) { errors.push(err.message); }
+    }
+    state.startLists.sort((a, b) => a.event.localeCompare(b.event, undefined, { numeric: true }));
+    const sel = $('sl-event');
+    const keep = (currentStartList() || {}).fileName;
+    sel.length = 1;
+    for (const l of state.startLists) sel.append(new Option(`#${l.event} ${l.title}`, l.fileName));
+    const kept = state.startLists.findIndex(l => l.fileName === keep);
+    if (kept < 0) state.sl = { index: state.startLists.length ? 0 : -1, heat: 0, diver: 0 };
+    else state.sl.index = kept;
+    sel.value = state.sl.index >= 0 ? state.startLists[state.sl.index].fileName : '';
+    $('startlist').hidden = !state.startLists.length;
+    if (errors.length) $('sl-note').textContent = errors.join(' · ');
+    startListChanged();
+  }
+
+  const currentStartList = () => state.startLists[state.sl.index] || null;
+
+  function startListValues() {
+    const list = currentStartList();
+    const meetTitle = $('sl-meet').value.trim();
+    if (!list) return meetTitle ? new Map([['MM_SW_MT', meetTitle], ['MM_DV_MT', meetTitle]]) : null;
+    return DLScb.fields(list, { heat: state.sl.heat, diver: state.sl.diver, meetTitle });
+  }
+
+  // How many heats (swimming) or divers (diving) the current list has.
+  function startListSteps() {
+    const list = currentStartList();
+    if (!list) return 0;
+    return list.diving ? DLScb.divers(list).length : list.heats.length;
+  }
+
+  function stepStartList(delta) {
+    const n = startListSteps();
+    if (!n) return;
+    const key = currentStartList().diving ? 'diver' : 'heat';
+    state.sl[key] = Math.min(n - 1, Math.max(0, state.sl[key] + delta));
+    startListChanged();
+  }
+
+  function startListChanged() {
+    const list = currentStartList();
+    const n = startListSteps();
+    const at = list ? (list.diving ? state.sl.diver : state.sl.heat) : 0;
+    $('sl-pos').textContent = !list ? '' : list.diving
+      ? (n ? `Diver ${at + 1} of ${n}` : 'No divers listed')
+      : `Heat ${at + 1} of ${n}`;
+    $('sl-prev').disabled = !list || at <= 0;
+    $('sl-next').disabled = !list || at >= n - 1;
+    if (!$('detail').hidden) {
+      if (shownBase) showModel(shownBase);
+    } else if (!$('gallery').hidden) showGallery();
+  }
+
+  function updateStartListNote() {
+    if ($('startlist').hidden) return;
+    const list = currentStartList();
+    $('sl-note').textContent = !shownBase || shownBase.kind !== 'template' ? ''
+      : !DLScb.usesStartList(shownBase) ? 'This template has no MM_ start-list fields.'
+      : list && !list.diving && !shownBase.items.some(it => /^MM_SW_/.test(it.code || '')) ? 'This is a diving template: pick a diving start list.'
+      : list && list.diving && !shownBase.items.some(it => /^MM_DV_/.test(it.code || '')) ? 'This is a swimming template: pick a swimming start list.'
+      : '';
+  }
+
+  function startListSuffix() {
+    const list = currentStartList();
+    if (!list) return '';
+    return list.diving ? ` - E${list.event} diver ${state.sl.diver + 1}` : ` - E${list.event} H${state.sl.heat + 1}`;
+  }
+
+  $('sl-event').addEventListener('change', e => {
+    state.sl = { index: state.startLists.findIndex(l => l.fileName === e.target.value), heat: 0, diver: 0 };
+    startListChanged();
+  });
+  $('sl-prev').onclick = () => stepStartList(-1);
+  $('sl-next').onclick = () => stepStartList(1);
+  $('sl-meet').addEventListener('input', startListChanged);
+
   // ---------- helpers ----------
 
   function el(tag, cls, text) {
@@ -457,7 +551,7 @@
   $('download').onclick = () => {
     const e = visible()[state.current];
     const a = document.createElement('a');
-    a.download = (e ? e.name.replace(DL_RE, '') : 'preview') + (opts().led ? ' (LED)' : '') + '.png';
+    a.download = (e ? e.name.replace(DL_RE, '') : 'preview') + startListSuffix() + (opts().led ? ' (LED)' : '') + '.png';
     a.href = $('big').toDataURL('image/png');
     a.click();
   };
@@ -467,6 +561,10 @@
     if (e.key === 'ArrowLeft' && state.current > 0) openDetail(state.current - 1);
     else if (e.key === 'ArrowRight' && state.current >= 0) openDetail(state.current + 1);
     else if (e.key === 'Escape') showGallery();
+    else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && state.sl.index >= 0) {
+      e.preventDefault();
+      stepStartList(e.key === 'ArrowDown' ? 1 : -1);
+    }
   });
 
   // Drag and drop, including whole folders.

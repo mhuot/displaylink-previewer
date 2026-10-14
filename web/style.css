@@ -157,6 +157,12 @@ main { flex: 1; overflow: auto; min-width: 0; }
 .tog input { accent-color: var(--accent); }
 .field { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
 .field select { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; color: var(--text); }
+.field input[type=text] { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; color: var(--text); width: 14em; }
+.startlist { margin-top: 8px; }
+.sl-step { display: inline-flex; align-items: center; gap: 6px; }
+.sl-step .btn { padding: 2px 10px; font-size: 16px; }
+#sl-pos { min-width: 8.5em; text-align: center; color: var(--text); }
+#sl-note { color: var(--muted); font-size: 13px; }
 
 .stage-wrap {
   overflow: auto; border-radius: var(--radius);
