@@ -3,6 +3,8 @@ FROM nginx:1.27-alpine
 
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY web/ /usr/share/nginx/html/
+# Mount points for an optional preloaded library and an optional password.
+RUN mkdir -p /usr/share/nginx/library /etc/nginx/auth
 
 EXPOSE 80
 

@@ -12,3 +12,7 @@ lib.cache
 
 # Start lists contain swimmers' names
 *.scb
+
+# Server-side library and password files for the container
+/library/
+/auth/

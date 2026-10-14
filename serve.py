@@ -3,8 +3,10 @@
 
     python3 serve.py                          # app only; open a folder in the page
     python3 serve.py ~/Downloads/Templates    # app with that folder preloaded
+    python3 serve.py --write-index library    # write library/index.json for a static host
 
 Binds to 127.0.0.1 only. The library is served read-only under /library/.
+.scb start lists in the library are preloaded too.
 """
 
 import argparse
@@ -16,7 +18,7 @@ import urllib.parse
 import webbrowser
 
 WEB = pathlib.Path(__file__).resolve().parent / "web"
-EXTS = {".tpl", ".seq", ".png", ".jpg", ".jpeg", ".bmp", ".gif"}
+EXTS = {".tpl", ".seq", ".scb", ".png", ".jpg", ".jpeg", ".bmp", ".gif"}
 
 
 def build_index(lib):
@@ -84,6 +86,11 @@ def main():
     )
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument(
+        "--write-index",
+        action="store_true",
+        help="write <library>/index.json for a static host instead of serving",
+    )
     args = ap.parse_args()
 
     lib = (
@@ -93,6 +100,13 @@ def main():
     )
     if lib and not lib.is_dir():
         ap.error(f"not a folder: {lib}")
+    if args.write_index:
+        if not lib:
+            ap.error("--write-index needs a library folder")
+        files = build_index(lib)
+        (lib / "index.json").write_text(json.dumps(files), encoding="utf-8")
+        print(f"wrote {lib / 'index.json'} ({len(files)} files)")
+        return
 
     server = http.server.ThreadingHTTPServer(
         ("127.0.0.1", args.port), make_handler(lib)

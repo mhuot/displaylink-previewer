@@ -67,6 +67,35 @@ there is no backend, database or upload storage to look after.
   ```
 
 - The image sets a strict Content-Security-Policy; the only third-party request is Google Fonts.
+- To share a library (templates plus `.scb` start lists) with visitors, copy it to a folder on
+  the host, index it, and mount it read-only at `/usr/share/nginx/library`. The page loads it on
+  open, as with `serve.py`:
+
+  ```sh
+  python3 serve.py --write-index library      # writes library/index.json
+  ```
+
+  ```yaml
+      volumes:
+        - ./library:/usr/share/nginx/library:ro
+  ```
+
+- To require a password, mount a folder at `/etc/nginx/auth` holding an `htpasswd` file and an
+  `auth.conf`. Do this whenever the library holds start lists (swimmers' names), and serve the
+  site over HTTPS only:
+
+  ```sh
+  mkdir -p auth
+  printf '%s:%s\n' "$USER_NAME" "$(openssl passwd -apr1)" > auth/htpasswd
+  printf 'auth_basic "DisplayLink Previewer";\nauth_basic_user_file /etc/nginx/auth/htpasswd;\n' > auth/auth.conf
+  ```
+
+  ```yaml
+      volumes:
+        - ./auth:/etc/nginx/auth:ro
+  ```
+
+  `/healthz` stays open for health checks. `library/` and `auth/` are git-ignored.
 
 ## Architecture
 
@@ -125,8 +154,9 @@ flowchart LR
 - Fields filled: `MM_SW_ET` (event title), `MM_SW_NM[lane]` and `MM_SW_AF[lane]` (name and
   team). Events whose title contains `DIVING` fill `MM_DV_ET`, `MM_DV_NM` and `MM_DV_AF`, one
   diver at a time in start order.
-- Start lists hold swimmers' names. They are read in the browser only, are never served by
-  `serve.py`, and `*.scb` is git-ignored.
+- Start lists hold swimmers' names. They are read in the browser, `*.scb` is git-ignored, and
+  they are only served when you place them in a library folder yourself (`serve.py`, or a
+  password-protected container; see Self-hosting).
 
 ### Rendering limits
 

@@ -602,10 +602,14 @@
       const res = await fetch('library/index.json', { cache: 'no-store' });
       if (!res.ok) return;
       const paths = await res.json();
-      const fresh = await Promise.all(paths.map(async p => {
-        const r = await fetch('library/' + p.split('/').map(encodeURIComponent).join('/'));
-        return makeEntry(p, new Uint8Array(await r.arrayBuffer()));
-      }));
+      const get = p => fetch('library/' + p.split('/').map(encodeURIComponent).join('/'));
+      const lists = paths.filter(p => SCB_RE.test(p));
+      if (lists.length) {
+        await loadStartLists(await Promise.all(lists.map(async p =>
+          new File([await (await get(p)).text()], p.split('/').pop()))));
+      }
+      const fresh = await Promise.all(paths.filter(p => !SCB_RE.test(p)).map(async p =>
+        makeEntry(p, new Uint8Array(await (await get(p)).arrayBuffer()))));
       if (fresh.length) addEntries(fresh);
     } catch { /* opened from file:// or no library: wait for the user */ }
   })();
