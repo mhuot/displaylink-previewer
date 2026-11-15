@@ -10,6 +10,8 @@ name: Deploy
 # Triggers are limited to pushes to main and manual runs. Never add a
 # pull_request trigger: this runner can run Docker on the server.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
