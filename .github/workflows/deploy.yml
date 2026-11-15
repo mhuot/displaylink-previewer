@@ -1,0 +1,58 @@
+name: Deploy
+# Continuous deployment to mcserver1 (displaylink.geekpark.com), on that
+# host's self-hosted runner (label: displaylink-previewer).
+#
+# The server keeps files outside this public repo in its checkout
+# (~/displaylink-previewer): a compose override, the start-list library and
+# the password file. So the deploy updates that checkout in place instead of
+# building from the runner's own copy.
+#
+# Triggers are limited to pushes to main and manual runs. Never add a
+# pull_request trigger: this runner can run Docker on the server.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-displaylink-previewer
+  cancel-in-progress: false
+
+# Deploy only reads the repo; it never writes back to GitHub.
+permissions:
+  contents: read
+
+env:
+  APP_DIR: /home/ubuntu/displaylink-previewer
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, displaylink-previewer]
+    timeout-minutes: 15
+    steps:
+      - name: Update the checkout on the host
+        # Fast-forward only: if the host has changes of its own, stop and
+        # leave them alone.
+        run: |
+          cd "$APP_DIR"
+          git fetch origin main
+          git merge --ff-only "$GITHUB_SHA"
+
+      - name: Build and start container
+        run: |
+          cd "$APP_DIR"
+          docker compose up -d --build
+
+      - name: Smoke test
+        # The container must be running and the site must answer through the
+        # proxy. It sits behind a password, so 401 is the healthy answer.
+        run: |
+          sleep 5
+          test "$(docker inspect -f '{{.State.Running}}' displaylink-previewer)" = "true"
+          code="$(curl -s -o /dev/null -w '%{http_code}' https://displaylink.geekpark.com/)"
+          echo "site answered $code"
+          test "$code" = "401" -o "$code" = "200"
+
+      - name: Container logs on failure
+        if: failure()
+        run: |
+          cd "$APP_DIR"
+          docker compose logs --tail=100
